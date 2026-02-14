@@ -32,7 +32,7 @@ This keeps:
 ### 1) `services/jarvis-orchestrator`
 
 **Responsibilities**
-- Telegram bot UI (commands, buttons)
+- Telegram bot UI (**slash commands + buttons**)
 - Turns messages into structured tasks
 - Creates assignments (“who should do it?”)
 - Posts status updates back to Telegram
@@ -42,6 +42,17 @@ This keeps:
 - Must only claim “done” based on Mission Control artifacts/events
 
 Env: see `services/jarvis-orchestrator/.env.example`
+
+#### Telegram commands (v1)
+- `/newtask <text>`
+- `/status`
+- `/task <idPrefix>`
+- `/assign <idPrefix> <workerType> [workerId]`
+- `/priority <idPrefix> <low|normal|high|urgent>`
+- `/cancel <idPrefix>`
+- `/release <idPrefix>`
+- `/workers`
+- `/help`
 
 ### 2) `services/worker-runner`
 
