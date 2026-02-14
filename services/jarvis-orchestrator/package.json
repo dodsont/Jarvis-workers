@@ -1,0 +1,22 @@
+{
+  "name": "@jarvis/jarvis-orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --loader ts-node/esm src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'no tests yet'",
+    "build": "echo 'no build yet'"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "zod": "^3.23.8",
+    "@jarvis/shared": "*",
+    "@jarvis/mission-control-db": "*"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

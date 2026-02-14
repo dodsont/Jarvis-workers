@@ -1,0 +1,12 @@
+{
+  "name": "@jarvis/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'no tests yet'",
+    "build": "echo 'no build yet'"
+  }
+}
