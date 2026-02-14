@@ -1,0 +1,17 @@
+{
+  "name": "jarvis-workers",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "echo 'lint: TODO'",
+    "typecheck": "npm -ws run typecheck",
+    "test": "npm -ws run test",
+    "build": "npm -ws run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
