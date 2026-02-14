@@ -123,7 +123,7 @@ app.get("/", (_req, res) => {
     ul.innerHTML = '';
     for (const t of tasks) {
       const li = document.createElement('li');
-      li.textContent = `${t.status} [${t.priority}] ${t.title} (${t.id.slice(0,8)})`;
+      li.textContent = t.status + ' [' + t.priority + '] ' + t.title + ' (' + t.id.slice(0,8) + ')';
       ul.appendChild(li);
     }
   }
@@ -138,7 +138,7 @@ app.get("/", (_req, res) => {
       body: JSON.stringify({ title, description, assigned_worker_type })
     });
     const body = await res.json();
-    document.getElementById('createResult').textContent = res.ok ? `Created: ${body.id}` : `Error: ${body.error}`;
+    document.getElementById('createResult').textContent = res.ok ? ('Created: ' + body.id) : ('Error: ' + body.error);
     await refresh();
   };
   refresh();

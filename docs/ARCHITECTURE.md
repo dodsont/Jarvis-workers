@@ -45,3 +45,5 @@ Network:
 - Artifacts table that can point to local files (or store small text blobs)
 
 See: `packages/mission-control-db/schema.sql`.
+
+Event types are documented in: `docs/EVENT_TYPES.md`.
