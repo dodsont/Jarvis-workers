@@ -119,6 +119,35 @@ docs/
 
 ## Development (local)
 
+### Marking a worker as actively working (Mission Control)
+
+Mission Control shows a worker's **current task** based on an *open* row in `task_claims`.
+
+If you're spawning a worker/sub-agent outside the normal `worker-runner` loop (e.g. Henry dispatching an ad-hoc sub-agent), use `mcctl start-task`/`complete-task` to keep the dashboard accurate:
+
+```bash
+# From repo root
+export MISSION_CONTROL_DB_PATH=./data/mission-control.sqlite
+
+# Create a task + assignment + claim (worker will show as busy in UI)
+node services/mission-control-ui/mcctl.mjs start-task \
+  --worker david \
+  --workerType seo \
+  --title "Google Ads feedback" \
+  --description "Review and respond with actionable notes"
+
+# ...when finished, release the claim and set the final status
+node services/mission-control-ui/mcctl.mjs complete-task \
+  --worker david \
+  --taskId <TASK_ID_FROM_START_TASK> \
+  --status done
+```
+
+This uses existing tables:
+- `task_assignments` (intent)
+- `task_claims` (reality / what Mission Control uses for current task)
+- `events` (audit)
+
 This repo is still early-stage scaffolding, but you can typecheck everything:
 
 ```bash
