@@ -12,7 +12,9 @@ export function getDb() {
   // Apply schema on boot (idempotent).
   // NOTE: In Next.js production builds, `import.meta.url`/asset bundling can turn this into a
   // `/_next/static/...` URL, which breaks `fileURLToPath`. Use an explicit filesystem path.
-  const schemaPath = path.resolve(process.cwd(), "packages/mission-control-db/schema.sql");
+  const repoRoot =
+    process.env.MISSION_CONTROL_REPO_ROOT ?? path.resolve(process.cwd(), "../..");
+  const schemaPath = path.resolve(repoRoot, "packages/mission-control-db/schema.sql");
   const schemaSql = fs.readFileSync(schemaPath, "utf8");
 
   const db = openMissionControlDB({ dbPath });
