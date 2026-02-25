@@ -2,11 +2,13 @@ node_modules
 .DS_Store
 dist
 build
+.next
 .env
 .env.*
 !.env.example
 coverage
 *.log
+*.tsbuildinfo
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
