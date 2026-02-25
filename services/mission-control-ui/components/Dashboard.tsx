@@ -29,6 +29,14 @@ type TaskRow = {
   claimed_at: string | null;
 };
 
+function displayName(id: string) {
+  // ids are stored lowercase; display pretty names
+  return id
+    .split(/[-_]/g)
+    .map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p))
+    .join(" ");
+}
+
 function formatTs(ts: string | null) {
   if (!ts) return "—";
   // SQLite datetime('now') is UTC without timezone; display raw.
@@ -144,9 +152,6 @@ export function Dashboard() {
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             Mission Control
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Workers + tasks (auto-refresh every 5s). API: <code className="rounded bg-slate-100 px-1">/api/…</code>
-          </p>
         </div>
         <div className="text-xs text-slate-500">
           <span className="inline-flex items-center gap-2">
@@ -177,9 +182,9 @@ export function Dashboard() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {workers.map((w) => (
-                  <tr key={w.id} className="align-top">
+                  <tr key={displayName(w.id)} className="align-top">
                     <td className="py-3 pr-4 font-mono text-xs text-slate-700">
-                      {w.id}
+                      {displayName(w.id)}
                     </td>
                     <td className="py-3 pr-4">
                       <span
@@ -298,9 +303,6 @@ export function Dashboard() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {tasks.map((t) => {
-                  const claimed = t.claimed_by_worker_id
-                    ? workerMap.get(t.claimed_by_worker_id)
-                    : null;
 
                   return (
                     <tr key={t.id} className="align-top">
@@ -329,22 +331,7 @@ export function Dashboard() {
                         </span>
                       </td>
                       <td className="py-3 pr-4 text-sm text-slate-700">
-                        {t.claimed_by_worker_id ? (
-                          <span>
-                            claimed by <code className="rounded bg-slate-100 px-1">{t.claimed_by_worker_id}</code>
-                          </span>
-                        ) : t.assigned_worker_id ? (
-                          <span>
-                            assigned to <code className="rounded bg-slate-100 px-1">{t.assigned_worker_id}</code>
-                          </span>
-                        ) : t.assigned_worker_type ? (
-                          <span>
-                            assigned type <code className="rounded bg-slate-100 px-1">{t.assigned_worker_type}</code>
-                          </span>
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                        {claimed?.current_task_id === t.id ? null : null}
+                        {t.claimed_by_worker_id ? displayName(t.claimed_by_worker_id) : t.assigned_worker_id ? displayName(t.assigned_worker_id) : t.assigned_worker_type ? t.assigned_worker_type : '—'}
                       </td>
                       <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
                     </tr>
@@ -358,13 +345,6 @@ export function Dashboard() {
           ) : null}
         </Card>
       </div>
-
-      <footer className="mt-10 text-xs text-slate-500">
-        <p>
-          Tip: set <code className="rounded bg-slate-100 px-1">BASIC_AUTH_USER</code> and{" "}
-          <code className="rounded bg-slate-100 px-1">BASIC_AUTH_PASS</code> to gate access.
-        </p>
-      </footer>
     </main>
   );
 }
