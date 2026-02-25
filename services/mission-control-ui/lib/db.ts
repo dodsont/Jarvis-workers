@@ -14,7 +14,9 @@ export function getDb() {
     "../../../packages/mission-control-db/schema.sql",
     import.meta.url
   );
-  const schemaPath = fileURLToPath(schemaUrl);
+  // In some Next.js runtimes/bundles, `fileURLToPath` can be picky about the input type.
+  // Passing a string keeps this robust.
+  const schemaPath = fileURLToPath(schemaUrl.toString());
   const schemaSql = fs.readFileSync(schemaPath, "utf8");
 
   const db = openMissionControlDB({ dbPath });
