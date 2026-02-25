@@ -25,6 +25,7 @@ export function GET(req: NextRequest) {
   const db = getDb();
 
   // Task list includes: active assignment + open claim (if present)
+  // plus derived start/finish timestamps from claims.
   const rows = db
     .prepare(
       `
@@ -39,7 +40,19 @@ export function GET(req: NextRequest) {
         a.worker_type AS assigned_worker_type,
         a.worker_id AS assigned_worker_id,
         c.worker_id AS claimed_by_worker_id,
-        c.claimed_at AS claimed_at
+        c.claimed_at AS claimed_at,
+
+        (
+          SELECT MIN(claimed_at)
+          FROM task_claims c2
+          WHERE c2.task_id = t.id
+        ) AS started_at,
+
+        (
+          SELECT MAX(released_at)
+          FROM task_claims c3
+          WHERE c3.task_id = t.id AND c3.released_at IS NOT NULL
+        ) AS finished_at
       FROM tasks t
       LEFT JOIN task_assignments a
         ON a.task_id = t.id AND a.status = 'active'

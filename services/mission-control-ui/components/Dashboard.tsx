@@ -27,6 +27,8 @@ type TaskRow = {
   assigned_worker_id: string | null;
   claimed_by_worker_id: string | null;
   claimed_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 };
 
 function formatTs(ts: string | null) {
@@ -136,6 +138,12 @@ export function Dashboard() {
       setCreating(false);
     }
   }
+
+  const completedTasks = useMemo(() => {
+    return tasks.filter((t) =>
+      ["done", "failed", "canceled"].includes(t.status.toLowerCase())
+    );
+  }, [tasks]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
@@ -293,6 +301,8 @@ export function Dashboard() {
                   <th className="py-2 pr-4 font-medium">title</th>
                   <th className="py-2 pr-4 font-medium">status</th>
                   <th className="py-2 pr-4 font-medium">who</th>
+                  <th className="py-2 pr-4 font-medium">start</th>
+                  <th className="py-2 pr-4 font-medium">finish</th>
                   <th className="py-2 font-medium">updated</th>
                 </tr>
               </thead>
@@ -301,6 +311,11 @@ export function Dashboard() {
                   const claimed = t.claimed_by_worker_id
                     ? workerMap.get(t.claimed_by_worker_id)
                     : null;
+
+                  const terminal = ["done", "failed", "canceled"].includes(
+                    t.status.toLowerCase()
+                  );
+                  const finishTs = t.finished_at ?? (terminal ? t.updated_at : null);
 
                   return (
                     <tr key={t.id} className="align-top">
@@ -346,6 +361,8 @@ export function Dashboard() {
                         )}
                         {claimed?.current_task_id === t.id ? null : null}
                       </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">{formatTs(t.started_at)}</td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">{formatTs(finishTs)}</td>
                       <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
                     </tr>
                   );
@@ -355,6 +372,71 @@ export function Dashboard() {
           </div>
           {tasks.length === 0 ? (
             <div className="mt-3 text-sm text-slate-500">No tasks yet.</div>
+          ) : null}
+        </Card>
+      </div>
+
+      <div className="mt-6">
+        <Card title={`Completed work (${completedTasks.length})`}>
+          <p className="mb-3 text-xs text-slate-500">
+            Start/finish are derived from claims: <code className="rounded bg-slate-100 px-1">MIN(claimed_at)</code> and{" "}
+            <code className="rounded bg-slate-100 px-1">MAX(released_at)</code>. If a task is terminal but has no released claim, finish falls back to <code className="rounded bg-slate-100 px-1">tasks.updated_at</code>.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200">
+                  <th className="py-2 pr-4 font-medium">id</th>
+                  <th className="py-2 pr-4 font-medium">title</th>
+                  <th className="py-2 pr-4 font-medium">who</th>
+                  <th className="py-2 pr-4 font-medium">start</th>
+                  <th className="py-2 pr-4 font-medium">finish</th>
+                  <th className="py-2 font-medium">status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {completedTasks.map((t) => {
+                  const finishTs = t.finished_at ?? t.updated_at;
+                  return (
+                    <tr key={t.id} className="align-top">
+                      <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                        {t.id.slice(0, 8)}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="text-slate-900">{t.title}</div>
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-slate-700">
+                        {t.claimed_by_worker_id ? (
+                          <code className="rounded bg-slate-100 px-1">{t.claimed_by_worker_id}</code>
+                        ) : t.assigned_worker_id ? (
+                          <code className="rounded bg-slate-100 px-1">{t.assigned_worker_id}</code>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">
+                        {formatTs(t.started_at)}
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">
+                        {formatTs(finishTs)}
+                      </td>
+                      <td className="py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                            statusToKind(t.status)
+                          )}`}
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {completedTasks.length === 0 ? (
+            <div className="mt-3 text-sm text-slate-500">No completed tasks yet.</div>
           ) : null}
         </Card>
       </div>
