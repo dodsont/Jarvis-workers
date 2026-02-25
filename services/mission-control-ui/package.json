@@ -1,21 +1,26 @@
 {
   "name": "@jarvis/mission-control-ui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --loader ts-node/esm src/index.ts",
+    "dev": "next dev -p ${PORT:-8787}",
+    "build": "next build",
+    "start": "next start -p ${PORT:-8787}",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "echo 'no tests yet'",
-    "build": "echo 'no build yet'"
+    "mcctl": "node ./mcctl.mjs"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "@jarvis/mission-control-db": "*"
+    "@jarvis/mission-control-db": "*",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "ts-node": "^10.9.2",
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "typescript": "^5.5.4"
   }
 }
