@@ -3,8 +3,8 @@ import { NextRequest } from "next/server";
 /**
  * Optional Basic Auth gate.
  *
- * v1 placeholder: if BASIC_AUTH_USER & BASIC_AUTH_PASS are set, all API routes
- * should call requireBasicAuth(req) and return the Response.
+ * NOTE: Mission Control now also enforces auth globally via Next middleware.
+ * This helper remains as a defense-in-depth check for API routes.
  */
 export function requireBasicAuth(req: NextRequest): Response | null {
   const user = process.env.BASIC_AUTH_USER;
@@ -13,7 +13,13 @@ export function requireBasicAuth(req: NextRequest): Response | null {
 
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Basic ")) {
-    return new Response("auth required", { status: 401 });
+    return new Response("auth required", {
+      status: 401,
+      headers: {
+        // Causes the browser to show the Basic Auth prompt.
+        "WWW-Authenticate": 'Basic realm="Mission Control", charset="UTF-8"',
+      },
+    });
   }
 
   const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString(
@@ -23,6 +29,14 @@ export function requireBasicAuth(req: NextRequest): Response | null {
   const u = idx >= 0 ? decoded.slice(0, idx) : decoded;
   const p = idx >= 0 ? decoded.slice(idx + 1) : "";
 
-  if (u !== user || p !== pass) return new Response("forbidden", { status: 403 });
+  if (u !== user || p !== pass) {
+    // Use 401 (not 403) so browsers re-prompt.
+    return new Response("auth required", {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": 'Basic realm="Mission Control", charset="UTF-8"',
+      },
+    });
+  }
   return null;
 }

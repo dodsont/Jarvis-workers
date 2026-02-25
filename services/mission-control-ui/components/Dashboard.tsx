@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 type WorkerRow = {
   id: string;
@@ -33,6 +33,47 @@ function formatTs(ts: string | null) {
   if (!ts) return "—";
   // SQLite datetime('now') is UTC without timezone; display raw.
   return ts.replace("T", " ").replace(".000Z", "Z");
+}
+
+type BadgeKind = "good" | "warn" | "bad" | "neutral";
+
+function badgeClass(kind: BadgeKind) {
+  switch (kind) {
+    case "good":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
+    case "warn":
+      return "bg-amber-50 text-amber-700 ring-amber-600/20";
+    case "bad":
+      return "bg-rose-50 text-rose-700 ring-rose-600/20";
+    default:
+      return "bg-slate-50 text-slate-700 ring-slate-600/20";
+  }
+}
+
+function statusToKind(status: string): BadgeKind {
+  const s = status.toLowerCase();
+  if (["running", "online", "idle", "ready", "ok", "active"].includes(s)) return "good";
+  if (["queued", "pending", "claimed"].includes(s)) return "warn";
+  if (["failed", "error", "dead", "offline"].includes(s)) return "bad";
+  return "neutral";
+}
+
+function priorityToKind(priority: string): BadgeKind {
+  const p = priority.toLowerCase();
+  if (p === "urgent") return "bad";
+  if (p === "high") return "warn";
+  return "neutral";
+}
+
+function Card({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 export function Dashboard() {
@@ -97,172 +138,233 @@ export function Dashboard() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 1200 }}>
-      <h1 style={{ margin: 0 }}>Mission Control</h1>
-      <p style={{ color: "#666" }}>
-        Workers + tasks (auto-refresh every 5s). API: <code>/api/…</code>
-      </p>
+    <main className="mx-auto max-w-6xl px-6 py-10">
+      <header className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Mission Control
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Workers + tasks (auto-refresh every 5s). API: <code className="rounded bg-slate-100 px-1">/api/…</code>
+          </p>
+        </div>
+        <div className="text-xs text-slate-500">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Live
+          </span>
+        </div>
+      </header>
 
       {error ? (
-        <pre
-          style={{
-            background: "#fff5f5",
-            border: "1px solid #f5c2c2",
-            padding: 12,
-            borderRadius: 8,
-            overflow: "auto",
-          }}
-        >
-          {error}
-        </pre>
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <div className="mb-1 font-medium">Request failed</div>
+          <pre className="overflow-auto whitespace-pre-wrap leading-5">{error}</pre>
+        </div>
       ) : null}
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Workers</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left" }}>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>id</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>status</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>current task</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>latest</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workers.map((w) => (
-                <tr key={w.id}>
-                  <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>
-                    <code>{w.id}</code>
-                  </td>
-                  <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>{w.status}</td>
-                  <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>
-                    {w.current_task_id ? (
-                      <span>
-                        <code>{w.current_task_id.slice(0, 8)}</code> — {w.current_task_title}
-                        {w.current_task_status ? ` (${w.current_task_status})` : ""}
-                      </span>
-                    ) : (
-                      <span style={{ color: "#666" }}>idle</span>
-                    )}
-                  </td>
-                  <td style={{ borderBottom: "1px solid #fafafa", padding: 8, color: "#555" }}>
-                    {formatTs(w.last_heartbeat_at ?? w.updated_at)}
-                  </td>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card title={`Workers (${workers.length})`}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200">
+                  <th className="py-2 pr-4 font-medium">id</th>
+                  <th className="py-2 pr-4 font-medium">status</th>
+                  <th className="py-2 pr-4 font-medium">current task</th>
+                  <th className="py-2 font-medium">latest</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Create task</h2>
-          <label style={{ display: "block", marginBottom: 6 }}>
-            Title
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              style={{ width: "100%", padding: 8, marginTop: 4 }}
-              placeholder="e.g. Implement heartbeat in worker-runner"
-            />
-          </label>
-          <label style={{ display: "block", marginBottom: 6 }}>
-            Description
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{ width: "100%", padding: 8, marginTop: 4 }}
-              rows={5}
-              placeholder="details…"
-            />
-          </label>
-          <label style={{ display: "block", marginBottom: 12 }}>
-            Priority
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              style={{ width: "100%", padding: 8, marginTop: 4 }}
-            >
-              <option value="low">low</option>
-              <option value="normal">normal</option>
-              <option value="high">high</option>
-              <option value="urgent">urgent</option>
-            </select>
-          </label>
-
-          <button
-            onClick={createTask}
-            disabled={creating || !title.trim()}
-            style={{ padding: "8px 12px" }}
-          >
-            {creating ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </section>
-
-      <section style={{ marginTop: 16 }}>
-        <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Latest tasks</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left" }}>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>id</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>title</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>status</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>who</th>
-                <th style={{ borderBottom: "1px solid #eee", padding: 8 }}>updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((t) => {
-                const claimed = t.claimed_by_worker_id
-                  ? workerMap.get(t.claimed_by_worker_id)
-                  : null;
-                return (
-                  <tr key={t.id}>
-                    <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>
-                      <code>{t.id.slice(0, 8)}</code>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {workers.map((w) => (
+                  <tr key={w.id} className="align-top">
+                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                      {w.id}
                     </td>
-                    <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>
-                      {t.title}
-                      <span style={{ color: "#666" }}> [{t.priority}]</span>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                          statusToKind(w.status)
+                        )}`}
+                      >
+                        {w.status}
+                      </span>
                     </td>
-                    <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>{t.status}</td>
-                    <td style={{ borderBottom: "1px solid #fafafa", padding: 8 }}>
-                      {t.claimed_by_worker_id ? (
-                        <span>
-                          claimed by <code>{t.claimed_by_worker_id}</code>
-                        </span>
-                      ) : t.assigned_worker_id ? (
-                        <span>
-                          assigned to <code>{t.assigned_worker_id}</code>
-                        </span>
-                      ) : t.assigned_worker_type ? (
-                        <span>
-                          assigned type <code>{t.assigned_worker_type}</code>
-                        </span>
+                    <td className="py-3 pr-4">
+                      {w.current_task_id ? (
+                        <div className="text-slate-900">
+                          <div className="font-mono text-xs text-slate-600">
+                            {w.current_task_id.slice(0, 8)}
+                          </div>
+                          <div className="mt-0.5">
+                            {w.current_task_title}
+                            {w.current_task_status ? (
+                              <span className="text-slate-500"> ({w.current_task_status})</span>
+                            ) : null}
+                          </div>
+                        </div>
                       ) : (
-                        <span style={{ color: "#666" }}>—</span>
+                        <span className="text-slate-500">idle</span>
                       )}
-                      {claimed?.current_task_id === t.id ? null : null}
                     </td>
-                    <td style={{ borderBottom: "1px solid #fafafa", padding: 8, color: "#555" }}>
-                      {formatTs(t.updated_at)}
+                    <td className="py-3 text-xs text-slate-600">
+                      {formatTs(w.last_heartbeat_at ?? w.updated_at)}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {workers.length === 0 ? (
+            <div className="mt-3 text-sm text-slate-500">No workers yet.</div>
+          ) : null}
+        </Card>
+
+        <Card title="Create task">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!creating && title.trim()) void createTask();
+            }}
+          >
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Title</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                placeholder="e.g. Implement heartbeat in worker-runner"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                rows={5}
+                placeholder="details…"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="low">low</option>
+                <option value="normal">normal</option>
+                <option value="high">high</option>
+                <option value="urgent">urgent</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={creating || !title.trim()}
+                className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creating ? "Creating…" : "Create"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Refresh
+              </button>
+            </div>
+          </form>
+        </Card>
+      </div>
+
+      <div className="mt-6">
+        <Card title={`Latest tasks (${tasks.length})`}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200">
+                  <th className="py-2 pr-4 font-medium">id</th>
+                  <th className="py-2 pr-4 font-medium">title</th>
+                  <th className="py-2 pr-4 font-medium">status</th>
+                  <th className="py-2 pr-4 font-medium">who</th>
+                  <th className="py-2 font-medium">updated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {tasks.map((t) => {
+                  const claimed = t.claimed_by_worker_id
+                    ? workerMap.get(t.claimed_by_worker_id)
+                    : null;
+
+                  return (
+                    <tr key={t.id} className="align-top">
+                      <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                        {t.id.slice(0, 8)}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="text-slate-900">{t.title}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                              priorityToKind(t.priority)
+                            )}`}
+                          >
+                            {t.priority}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                            statusToKind(t.status)
+                          )}`}
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-slate-700">
+                        {t.claimed_by_worker_id ? (
+                          <span>
+                            claimed by <code className="rounded bg-slate-100 px-1">{t.claimed_by_worker_id}</code>
+                          </span>
+                        ) : t.assigned_worker_id ? (
+                          <span>
+                            assigned to <code className="rounded bg-slate-100 px-1">{t.assigned_worker_id}</code>
+                          </span>
+                        ) : t.assigned_worker_type ? (
+                          <span>
+                            assigned type <code className="rounded bg-slate-100 px-1">{t.assigned_worker_type}</code>
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                        {claimed?.current_task_id === t.id ? null : null}
+                      </td>
+                      <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {tasks.length === 0 ? (
+            <div className="mt-3 text-sm text-slate-500">No tasks yet.</div>
+          ) : null}
+        </Card>
+      </div>
+
+      <footer className="mt-10 text-xs text-slate-500">
+        <p>
+          Tip: set <code className="rounded bg-slate-100 px-1">BASIC_AUTH_USER</code> and{" "}
+          <code className="rounded bg-slate-100 px-1">BASIC_AUTH_PASS</code> to gate access.
+        </p>
+      </footer>
     </main>
   );
 }
