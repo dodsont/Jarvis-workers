@@ -29,6 +29,9 @@ type TaskRow = {
   claimed_at: string | null;
 };
 
+type CompletedStatus = "done" | "failed" | "canceled";
+const COMPLETED_STATUSES: CompletedStatus[] = ["done", "failed", "canceled"];
+
 function displayName(id: string) {
   // ids are stored lowercase; display pretty names
   return id
@@ -41,6 +44,13 @@ function formatTs(ts: string | null) {
   if (!ts) return "—";
   // SQLite datetime('now') is UTC without timezone; display raw.
   return ts.replace("T", " ").replace(".000Z", "Z");
+}
+
+function whoForTask(t: TaskRow) {
+  if (t.claimed_by_worker_id) return displayName(t.claimed_by_worker_id);
+  if (t.assigned_worker_id) return displayName(t.assigned_worker_id);
+  if (t.assigned_worker_type) return t.assigned_worker_type;
+  return "—";
 }
 
 type BadgeKind = "good" | "warn" | "bad" | "neutral";
@@ -94,6 +104,15 @@ export function Dashboard() {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("normal");
 
+  const [completedQuery, setCompletedQuery] = useState("");
+  const [completedStatus, setCompletedStatus] = useState<"all" | CompletedStatus>(
+    "all"
+  );
+  const [completedWho, setCompletedWho] = useState<string>("all");
+  const [completedSort, setCompletedSort] = useState<
+    "finished_desc" | "finished_asc" | "status" | "who"
+  >("finished_desc");
+
   async function refresh() {
     setError(null);
     try {
@@ -123,6 +142,63 @@ export function Dashboard() {
     for (const w of workers) m.set(w.id, w);
     return m;
   }, [workers]);
+
+  const completedTasks = useMemo(() => {
+    const set = new Set(COMPLETED_STATUSES);
+    return tasks.filter((t) => set.has(t.status as CompletedStatus));
+  }, [tasks]);
+
+  const completedWhoOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of completedTasks) {
+      const who = whoForTask(t);
+      if (who && who !== "—") s.add(who);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [completedTasks]);
+
+  const visibleCompletedTasks = useMemo(() => {
+    const q = completedQuery.trim().toLowerCase();
+
+    let rows = completedTasks;
+
+    if (completedStatus !== "all") {
+      rows = rows.filter((t) => t.status === completedStatus);
+    }
+
+    if (completedWho !== "all") {
+      rows = rows.filter((t) => whoForTask(t) === completedWho);
+    }
+
+    if (q) {
+      rows = rows.filter((t) => {
+        const who = whoForTask(t);
+        const hay = `${t.title}\n${t.description ?? ""}\n${who}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    const sortRows = [...rows];
+    sortRows.sort((a, b) => {
+      if (completedSort === "finished_asc") {
+        return a.updated_at.localeCompare(b.updated_at);
+      }
+      if (completedSort === "finished_desc") {
+        return b.updated_at.localeCompare(a.updated_at);
+      }
+      if (completedSort === "status") {
+        const s = a.status.localeCompare(b.status);
+        if (s !== 0) return s;
+        return b.updated_at.localeCompare(a.updated_at);
+      }
+      // who
+      const w = whoForTask(a).localeCompare(whoForTask(b));
+      if (w !== 0) return w;
+      return b.updated_at.localeCompare(a.updated_at);
+    });
+
+    return sortRows;
+  }, [completedQuery, completedStatus, completedWho, completedSort, completedTasks]);
 
   async function createTask() {
     setCreating(true);
@@ -289,7 +365,100 @@ export function Dashboard() {
       </div>
 
       <div className="mt-6">
-        <Card title={`Latest tasks (${tasks.length})`}>
+        <Card
+          title={`Completed tasks (${visibleCompletedTasks.length}/${completedTasks.length})`}
+        >
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Search
+              </label>
+              <input
+                value={completedQuery}
+                onChange={(e) => setCompletedQuery(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                placeholder="title, description, who…"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Status
+              </label>
+              <select
+                value={completedStatus}
+                onChange={(e) =>
+                  setCompletedStatus(e.target.value as "all" | CompletedStatus)
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="all">all</option>
+                {COMPLETED_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Who
+              </label>
+              <select
+                value={completedWho}
+                onChange={(e) => setCompletedWho(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="all">all</option>
+                {completedWhoOptions.map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Sort
+              </label>
+              <select
+                value={completedSort}
+                onChange={(e) =>
+                  setCompletedSort(
+                    e.target.value as
+                      | "finished_desc"
+                      | "finished_asc"
+                      | "status"
+                      | "who"
+                  )
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="finished_desc">finish time (newest)</option>
+                <option value="finished_asc">finish time (oldest)</option>
+                <option value="status">status</option>
+                <option value="who">who</option>
+              </select>
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletedQuery("");
+                  setCompletedStatus("all");
+                  setCompletedWho("all");
+                  setCompletedSort("finished_desc");
+                }}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Reset filters
+              </button>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
@@ -298,50 +467,56 @@ export function Dashboard() {
                   <th className="py-2 pr-4 font-medium">title</th>
                   <th className="py-2 pr-4 font-medium">status</th>
                   <th className="py-2 pr-4 font-medium">who</th>
-                  <th className="py-2 font-medium">updated</th>
+                  <th className="py-2 font-medium">finished</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tasks.map((t) => {
-
-                  return (
-                    <tr key={t.id} className="align-top">
-                      <td className="py-3 pr-4 font-mono text-xs text-slate-700">
-                        {t.id.slice(0, 8)}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="text-slate-900">{t.title}</div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${badgeClass(
-                              priorityToKind(t.priority)
-                            )}`}
-                          >
-                            {t.priority}
-                          </span>
+                {visibleCompletedTasks.map((t) => (
+                  <tr key={t.id} className="align-top">
+                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                      {t.id.slice(0, 8)}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="text-slate-900">{t.title}</div>
+                      {t.description ? (
+                        <div className="mt-0.5 max-w-xl whitespace-pre-wrap text-xs text-slate-500">
+                          {t.description}
                         </div>
-                      </td>
-                      <td className="py-3 pr-4">
+                      ) : null}
+                      <div className="mt-1 flex items-center gap-2">
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeClass(
-                            statusToKind(t.status)
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                            priorityToKind(t.priority)
                           )}`}
                         >
-                          {t.status}
+                          {t.priority}
                         </span>
-                      </td>
-                      <td className="py-3 pr-4 text-sm text-slate-700">
-                        {t.claimed_by_worker_id ? displayName(t.claimed_by_worker_id) : t.assigned_worker_id ? displayName(t.assigned_worker_id) : t.assigned_worker_type ? t.assigned_worker_type : '—'}
-                      </td>
-                      <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
-                    </tr>
-                  );
-                })}
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeClass(
+                          statusToKind(t.status)
+                        )}`}
+                      >
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-sm text-slate-700">{whoForTask(t)}</td>
+                    <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-          {tasks.length === 0 ? (
-            <div className="mt-3 text-sm text-slate-500">No tasks yet.</div>
+          {completedTasks.length === 0 ? (
+            <div className="mt-3 text-sm text-slate-500">
+              No completed tasks yet.
+            </div>
+          ) : visibleCompletedTasks.length === 0 ? (
+            <div className="mt-3 text-sm text-slate-500">
+              No tasks match your filters.
+            </div>
           ) : null}
         </Card>
       </div>
