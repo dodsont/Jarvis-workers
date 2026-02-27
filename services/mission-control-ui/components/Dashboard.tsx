@@ -9,6 +9,11 @@ type WorkerRow = {
   worker_types_json: string;
   last_heartbeat_at: string | null;
   updated_at: string;
+
+  // Number of active tasks currently claimed by this worker.
+  active_task_count?: number;
+
+  // The most-recent open claim for this worker (if any).
   current_task_id: string | null;
   current_task_claimed_at: string | null;
   current_task_title: string | null;
@@ -294,6 +299,47 @@ export function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
+  const visibleWorkers = useMemo(() => {
+    // Defensive dedupe: API should already return 1 row per worker,
+    // but if joins/regressions re-introduce duplicates, keep the UI stable.
+    const byId = new Map<string, WorkerRow>();
+
+    function tsKey(w: WorkerRow) {
+      return w.last_heartbeat_at ?? w.updated_at;
+    }
+
+    for (const w of workers) {
+      const prev = byId.get(w.id);
+      if (!prev) {
+        byId.set(w.id, w);
+        continue;
+      }
+
+      // Merge counts (in case duplicates came from a join).
+      const mergedCount = (prev.active_task_count ?? 0) + (w.active_task_count ?? 0);
+
+      // Keep the most-recent "current task".
+      const prevClaimed = prev.current_task_claimed_at ?? "";
+      const nextClaimed = w.current_task_claimed_at ?? "";
+      const keep = nextClaimed > prevClaimed ? w : prev;
+
+      byId.set(w.id, {
+        ...keep,
+        active_task_count: mergedCount,
+        // Keep the most-recent heartbeat/updated timestamp for ordering.
+        last_heartbeat_at:
+          (w.last_heartbeat_at ?? "") > (prev.last_heartbeat_at ?? "")
+            ? w.last_heartbeat_at
+            : prev.last_heartbeat_at,
+        updated_at: (w.updated_at ?? "") > (prev.updated_at ?? "") ? w.updated_at : prev.updated_at,
+      });
+    }
+
+    const rows = Array.from(byId.values());
+    rows.sort((a, b) => tsKey(b).localeCompare(tsKey(a)));
+    return rows;
+  }, [workers]);
+
   const completedTasks = useMemo(() => {
     const set = new Set(COMPLETED_STATUSES);
     return tasks.filter((t) => set.has(t.status as CompletedStatus));
@@ -424,20 +470,21 @@ export function Dashboard() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title={`Workers (${workers.length})`}>
+        <Card title={`Workers (${visibleWorkers.length})`}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <tr className="border-b border-slate-200 dark:border-slate-800">
                   <th className="py-2 pr-4 font-medium">id</th>
                   <th className="py-2 pr-4 font-medium">status</th>
+                  <th className="py-2 pr-4 font-medium">active</th>
                   <th className="py-2 pr-4 font-medium">current task</th>
                   <th className="py-2 font-medium">latest</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {workers.map((w) => (
-                  <tr key={displayName(w.id)} className="align-top">
+                {visibleWorkers.map((w) => (
+                  <tr key={w.id} className="align-top">
                     <td className="py-3 pr-4 font-mono text-xs text-slate-700 dark:text-slate-200">
                       {displayName(w.id)}
                     </td>
@@ -448,6 +495,11 @@ export function Dashboard() {
                         )}`}
                       >
                         {w.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="font-mono text-xs text-slate-700 dark:text-slate-200">
+                        {w.active_task_count ?? 0}
                       </span>
                     </td>
                     <td className="py-3 pr-4">
@@ -478,7 +530,7 @@ export function Dashboard() {
               </tbody>
             </table>
           </div>
-          {workers.length === 0 ? (
+          {visibleWorkers.length === 0 ? (
             <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
               No workers yet.
             </div>
@@ -770,7 +822,7 @@ export function Dashboard() {
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
               >
                 <option value="">Unassigned</option>
-                {workers.map((w) => (
+                {visibleWorkers.map((w) => (
                   <option key={w.id} value={w.id}>
                     {displayName(w.id)}
                   </option>
