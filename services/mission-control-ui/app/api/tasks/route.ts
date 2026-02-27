@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
   const description = body?.description;
   const priority = body?.priority;
   const tags = body?.tags;
+  const assignedWorkerId = body?.assigned_worker_id;
+  const assignedWorkerType = body?.assigned_worker_type;
 
   if (!title || typeof title !== "string") {
     return Response.json({ error: "title required" }, { status: 400 });
@@ -89,7 +91,17 @@ export async function POST(req: NextRequest) {
 
   const insertEvent = db.prepare(
     `INSERT INTO events (id, task_id, actor_type, actor_id, level, type, message, payload_json)
-     VALUES (?, ?, 'ui', NULL, 'info', 'task.created', ?, ?)`
+     VALUES (?, ?, 'ui', NULL, 'info', ?, ?, ?)`
+  );
+
+  const insertAssignment = db.prepare(
+    `INSERT INTO task_assignments (
+      id, task_id, worker_type, worker_id, status,
+      assigned_by_actor_type, assigned_by_actor_id, note, meta_json
+    ) VALUES (
+      ?, ?, ?, ?, 'active',
+      'ui', NULL, NULL, NULL
+    )`
   );
 
   const txn = db.transaction(() => {
@@ -104,9 +116,44 @@ export async function POST(req: NextRequest) {
     insertEvent.run(
       eventId,
       taskId,
+      "task.created",
       `task created: ${title}`,
       JSON.stringify({ title, priority: priorityValue })
     );
+
+    // Optional assignment (pin to a specific worker)
+    if (typeof assignedWorkerId === "string" && assignedWorkerId.trim()) {
+      let workerType: string | null =
+        typeof assignedWorkerType === "string" && assignedWorkerType.trim()
+          ? assignedWorkerType.trim()
+          : null;
+
+      if (!workerType) {
+        const row = db
+          .prepare(`SELECT worker_types_json FROM workers WHERE id = ? LIMIT 1`)
+          .get(assignedWorkerId.trim()) as any;
+        try {
+          const arr = row?.worker_types_json ? JSON.parse(row.worker_types_json) : null;
+          if (Array.isArray(arr) && typeof arr[0] === "string" && arr[0]) workerType = arr[0];
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!workerType) workerType = "coder";
+
+      const assignmentId = crypto.randomUUID();
+      insertAssignment.run(assignmentId, taskId, workerType, assignedWorkerId.trim());
+
+      const assignedEventId = crypto.randomUUID();
+      insertEvent.run(
+        assignedEventId,
+        taskId,
+        "task.assigned",
+        `task assigned to ${assignedWorkerId.trim()}`,
+        JSON.stringify({ worker_id: assignedWorkerId.trim(), worker_type: workerType })
+      );
+    }
   });
 
   txn();

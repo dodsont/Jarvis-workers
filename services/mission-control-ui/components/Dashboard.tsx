@@ -1,5 +1,6 @@
 "use client";
 
+import { useTheme } from "@/components/ThemeProvider";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 type WorkerRow = {
@@ -32,6 +33,15 @@ type TaskRow = {
 type CompletedStatus = "done" | "failed" | "canceled";
 const COMPLETED_STATUSES: CompletedStatus[] = ["done", "failed", "canceled"];
 
+type CompletedByWorkerRow = { worker_id: string; completed_count: number };
+
+type SamanthaDailyRow = { day: string; count: number };
+
+type StatsResponse = {
+  completedByWorker: CompletedByWorkerRow[];
+  samanthaDaily: SamanthaDailyRow[];
+};
+
 function displayName(id: string) {
   // ids are stored lowercase; display pretty names
   return id
@@ -58,13 +68,13 @@ type BadgeKind = "good" | "warn" | "bad" | "neutral";
 function badgeClass(kind: BadgeKind) {
   switch (kind) {
     case "good":
-      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
+      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-400/20";
     case "warn":
-      return "bg-amber-50 text-amber-700 ring-amber-600/20";
+      return "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-400/20";
     case "bad":
-      return "bg-rose-50 text-rose-700 ring-rose-600/20";
+      return "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-400/20";
     default:
-      return "bg-slate-50 text-slate-700 ring-slate-600/20";
+      return "bg-slate-50 text-slate-700 ring-slate-600/20 dark:bg-slate-900/60 dark:text-slate-200 dark:ring-slate-400/20";
   }
 }
 
@@ -85,24 +95,167 @@ function priorityToKind(priority: string): BadgeKind {
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/40">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+          {title}
+        </h2>
       </div>
       {children}
     </section>
   );
 }
 
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <button
+        className="absolute inset-0 bg-slate-900/50"
+        aria-label="Close modal"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-950">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            {title}
+          </h3>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Heatmap({
+  title,
+  days,
+  maxDays,
+}: {
+  title: string;
+  days: SamanthaDailyRow[];
+  maxDays: number;
+}) {
+  const map = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of days) m.set(r.day, r.count);
+    return m;
+  }, [days]);
+
+  const today = useMemo(() => new Date(), []);
+
+  const cells = useMemo(() => {
+    const out: { day: string; count: number }[] = [];
+    const start = new Date(today);
+    start.setDate(start.getDate() - (maxDays - 1));
+    for (let i = 0; i < maxDays; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const iso = d.toISOString().slice(0, 10);
+      out.push({ day: iso, count: map.get(iso) ?? 0 });
+    }
+    return out;
+  }, [map, maxDays, today]);
+
+  const maxCount = useMemo(() => {
+    let m = 0;
+    for (const c of cells) m = Math.max(m, c.count);
+    return m;
+  }, [cells]);
+
+  function intensity(count: number) {
+    if (count <= 0) return 0;
+    if (maxCount <= 1) return 4;
+    const ratio = count / maxCount;
+    if (ratio < 0.25) return 1;
+    if (ratio < 0.5) return 2;
+    if (ratio < 0.75) return 3;
+    return 4;
+  }
+
+  const cols = Math.ceil(maxDays / 7);
+
+  return (
+    <div>
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {title}
+      </div>
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {Array.from({ length: cols }).map((_, col) => (
+          <div key={col} className="grid grid-rows-7 gap-1">
+            {Array.from({ length: 7 }).map((__, row) => {
+              const idx = col * 7 + row;
+              const c = cells[idx];
+              if (!c) return <div key={row} />;
+              const level = intensity(c.count);
+              const cls =
+                level === 0
+                  ? "bg-slate-100 dark:bg-slate-800"
+                  : level === 1
+                    ? "bg-emerald-200 dark:bg-emerald-900"
+                    : level === 2
+                      ? "bg-emerald-300 dark:bg-emerald-800"
+                      : level === 3
+                        ? "bg-emerald-400 dark:bg-emerald-700"
+                        : "bg-emerald-500 dark:bg-emerald-600";
+              return (
+                <div
+                  key={row}
+                  title={`${c.day}: ${c.count}`}
+                  className={`h-3 w-3 rounded-sm ring-1 ring-slate-200 dark:ring-slate-800 ${cls}`}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        Darker = more completed tasks
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
+
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("normal");
+  const [assignee, setAssignee] = useState<string>("");
 
   const [completedQuery, setCompletedQuery] = useState("");
   const [completedStatus, setCompletedStatus] = useState<"all" | CompletedStatus>(
@@ -116,16 +269,20 @@ export function Dashboard() {
   async function refresh() {
     setError(null);
     try {
-      const [wRes, tRes] = await Promise.all([
+      const [wRes, tRes, sRes] = await Promise.all([
         fetch("/api/workers", { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
+        fetch("/api/stats", { cache: "no-store" }),
       ]);
       if (!wRes.ok) throw new Error(await wRes.text());
       if (!tRes.ok) throw new Error(await tRes.text());
+      if (!sRes.ok) throw new Error(await sRes.text());
       const wBody = await wRes.json();
       const tBody = await tRes.json();
+      const sBody = (await sRes.json()) as StatsResponse;
       setWorkers(wBody.workers ?? []);
       setTasks(tBody.tasks ?? []);
+      setStats(sBody);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     }
@@ -136,12 +293,6 @@ export function Dashboard() {
     const t = setInterval(refresh, 5000);
     return () => clearInterval(t);
   }, []);
-
-  const workerMap = useMemo(() => {
-    const m = new Map<string, WorkerRow>();
-    for (const w of workers) m.set(w.id, w);
-    return m;
-  }, [workers]);
 
   const completedTasks = useMemo(() => {
     const set = new Set(COMPLETED_STATUSES);
@@ -204,15 +355,23 @@ export function Dashboard() {
     setCreating(true);
     setError(null);
     try {
+      const selected = assignee.trim();
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, description, priority }),
+        body: JSON.stringify({
+          title,
+          description,
+          priority,
+          assigned_worker_id: selected || undefined,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       setTitle("");
       setDescription("");
       setPriority("normal");
+      setAssignee("");
+      setCreateOpen(false);
       await refresh();
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -221,24 +380,44 @@ export function Dashboard() {
     }
   }
 
+  const statsList = useMemo(() => {
+    const rows = stats?.completedByWorker ?? [];
+    return [...rows].sort((a, b) => {
+      const d = (b.completed_count ?? 0) - (a.completed_count ?? 0);
+      if (d !== 0) return d;
+      return a.worker_id.localeCompare(b.worker_id);
+    });
+  }, [stats]);
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <header className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
             Mission Control
           </h1>
         </div>
-        <div className="text-xs text-slate-500">
-          <span className="inline-flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Live
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Live
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+            aria-label="Toggle theme"
+            title={`Theme: ${theme}`}
+          >
+            {theme === "dark" ? "Dark" : "Light"}
+          </button>
         </div>
       </header>
 
       {error ? (
-        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100">
           <div className="mb-1 font-medium">Request failed</div>
           <pre className="overflow-auto whitespace-pre-wrap leading-5">{error}</pre>
         </div>
@@ -248,18 +427,18 @@ export function Dashboard() {
         <Card title={`Workers (${workers.length})`}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr className="border-b border-slate-200">
+              <thead className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <tr className="border-b border-slate-200 dark:border-slate-800">
                   <th className="py-2 pr-4 font-medium">id</th>
                   <th className="py-2 pr-4 font-medium">status</th>
                   <th className="py-2 pr-4 font-medium">current task</th>
                   <th className="py-2 font-medium">latest</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {workers.map((w) => (
                   <tr key={displayName(w.id)} className="align-top">
-                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                    <td className="py-3 pr-4 font-mono text-xs text-slate-700 dark:text-slate-200">
                       {displayName(w.id)}
                     </td>
                     <td className="py-3 pr-4">
@@ -273,22 +452,25 @@ export function Dashboard() {
                     </td>
                     <td className="py-3 pr-4">
                       {w.current_task_id ? (
-                        <div className="text-slate-900">
-                          <div className="font-mono text-xs text-slate-600">
+                        <div className="text-slate-900 dark:text-slate-50">
+                          <div className="font-mono text-xs text-slate-600 dark:text-slate-400">
                             {w.current_task_id.slice(0, 8)}
                           </div>
                           <div className="mt-0.5">
                             {w.current_task_title}
                             {w.current_task_status ? (
-                              <span className="text-slate-500"> ({w.current_task_status})</span>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {" "}
+                                ({w.current_task_status})
+                              </span>
                             ) : null}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-slate-500">idle</span>
+                        <span className="text-slate-500 dark:text-slate-400">idle</span>
                       )}
                     </td>
-                    <td className="py-3 text-xs text-slate-600">
+                    <td className="py-3 text-xs text-slate-600 dark:text-slate-400">
                       {formatTs(w.last_heartbeat_at ?? w.updated_at)}
                     </td>
                   </tr>
@@ -297,92 +479,77 @@ export function Dashboard() {
             </table>
           </div>
           {workers.length === 0 ? (
-            <div className="mt-3 text-sm text-slate-500">No workers yet.</div>
+            <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              No workers yet.
+            </div>
           ) : null}
         </Card>
 
-        <Card title="Create task">
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!creating && title.trim()) void createTask();
-            }}
-          >
+        <Card title="Stats">
+          <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700">Title</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                placeholder="e.g. Implement heartbeat in worker-runner"
-              />
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Completed tasks by worker
+              </div>
+              <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                {statsList.length === 0 ? (
+                  <div className="p-3 text-sm text-slate-500 dark:text-slate-400">
+                    No completed tasks yet.
+                  </div>
+                ) : (
+                  statsList.map((r) => (
+                    <div
+                      key={r.worker_id}
+                      className="flex items-center justify-between gap-3 p-3 text-sm"
+                    >
+                      <div className="font-medium text-slate-900 dark:text-slate-100">
+                        {displayName(r.worker_id)}
+                      </div>
+                      <div className="font-mono text-slate-700 dark:text-slate-300">
+                        {r.completed_count}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                rows={5}
-                placeholder="details…"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-              >
-                <option value="low">low</option>
-                <option value="normal">normal</option>
-                <option value="high">high</option>
-                <option value="urgent">urgent</option>
-              </select>
-            </div>
+            <Heatmap
+              title="Samantha contributions (last 90 days)"
+              days={stats?.samanthaDaily ?? []}
+              maxDays={90}
+            />
 
             <div className="flex items-center gap-3">
               <button
-                type="submit"
-                disabled={creating || !title.trim()}
-                className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {creating ? "Creating…" : "Create"}
-              </button>
-              <button
                 type="button"
                 onClick={() => void refresh()}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
               >
                 Refresh
               </button>
             </div>
-          </form>
+          </div>
         </Card>
       </div>
 
       <div className="mt-6">
-        <Card
-          title={`Completed tasks (${visibleCompletedTasks.length}/${completedTasks.length})`}
-        >
+        <Card title={`Completed tasks (${visibleCompletedTasks.length}/${completedTasks.length})`}>
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Search
               </label>
               <input
                 value={completedQuery}
                 onChange={(e) => setCompletedQuery(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
                 placeholder="title, description, who…"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Status
               </label>
               <select
@@ -390,7 +557,7 @@ export function Dashboard() {
                 onChange={(e) =>
                   setCompletedStatus(e.target.value as "all" | CompletedStatus)
                 }
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
               >
                 <option value="all">all</option>
                 {COMPLETED_STATUSES.map((s) => (
@@ -402,13 +569,13 @@ export function Dashboard() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Who
               </label>
               <select
                 value={completedWho}
                 onChange={(e) => setCompletedWho(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
               >
                 <option value="all">all</option>
                 {completedWhoOptions.map((w) => (
@@ -420,7 +587,7 @@ export function Dashboard() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Sort
               </label>
               <select
@@ -434,7 +601,7 @@ export function Dashboard() {
                       | "who"
                   )
                 }
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
               >
                 <option value="finished_desc">finish time (newest)</option>
                 <option value="finished_asc">finish time (oldest)</option>
@@ -452,7 +619,7 @@ export function Dashboard() {
                   setCompletedWho("all");
                   setCompletedSort("finished_desc");
                 }}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
               >
                 Reset filters
               </button>
@@ -461,8 +628,8 @@ export function Dashboard() {
 
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr className="border-b border-slate-200">
+              <thead className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <tr className="border-b border-slate-200 dark:border-slate-800">
                   <th className="py-2 pr-4 font-medium">id</th>
                   <th className="py-2 pr-4 font-medium">title</th>
                   <th className="py-2 pr-4 font-medium">status</th>
@@ -470,16 +637,16 @@ export function Dashboard() {
                   <th className="py-2 font-medium">finished</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {visibleCompletedTasks.map((t) => (
                   <tr key={t.id} className="align-top">
-                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">
+                    <td className="py-3 pr-4 font-mono text-xs text-slate-700 dark:text-slate-200">
                       {t.id.slice(0, 8)}
                     </td>
                     <td className="py-3 pr-4">
-                      <div className="text-slate-900">{t.title}</div>
+                      <div className="text-slate-900 dark:text-slate-50">{t.title}</div>
                       {t.description ? (
-                        <div className="mt-0.5 max-w-xl whitespace-pre-wrap text-xs text-slate-500">
+                        <div className="mt-0.5 max-w-xl whitespace-pre-wrap text-xs text-slate-500 dark:text-slate-400">
                           {t.description}
                         </div>
                       ) : null}
@@ -502,24 +669,135 @@ export function Dashboard() {
                         {t.status}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-sm text-slate-700">{whoForTask(t)}</td>
-                    <td className="py-3 text-xs text-slate-600">{formatTs(t.updated_at)}</td>
+                    <td className="py-3 pr-4 text-sm text-slate-700 dark:text-slate-300">
+                      {whoForTask(t)}
+                    </td>
+                    <td className="py-3 text-xs text-slate-600 dark:text-slate-400">
+                      {formatTs(t.updated_at)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {completedTasks.length === 0 ? (
-            <div className="mt-3 text-sm text-slate-500">
+            <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
               No completed tasks yet.
             </div>
           ) : visibleCompletedTasks.length === 0 ? (
-            <div className="mt-3 text-sm text-slate-500">
+            <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
               No tasks match your filters.
             </div>
           ) : null}
         </Card>
       </div>
+
+      {/* FAB */}
+      <button
+        type="button"
+        onClick={() => setCreateOpen(true)}
+        className="fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-xl font-semibold text-white shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:focus:ring-emerald-900"
+        aria-label="Create task"
+        title="Create task"
+      >
+        +
+      </button>
+
+      <Modal
+        open={createOpen}
+        title="Create task"
+        onClose={() => {
+          if (!creating) setCreateOpen(false);
+        }}
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!creating && title.trim()) void createTask();
+          }}
+        >
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              Title
+            </label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+              placeholder="e.g. Implement heartbeat in worker-runner"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+              rows={5}
+              placeholder="details…"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+              >
+                <option value="low">low</option>
+                <option value="normal">normal</option>
+                <option value="high">high</option>
+                <option value="urgent">urgent</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                Assign to
+              </label>
+              <select
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+              >
+                <option value="">Unassigned</option>
+                {workers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {displayName(w.id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={creating || !title.trim()}
+              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+            >
+              {creating ? "Creating…" : "Create"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(false)}
+              disabled={creating}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
     </main>
   );
 }

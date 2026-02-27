@@ -13,3 +13,6 @@ pnpm-lock.yaml
 package-lock.json
 yarn.lock
 .vscode
+
+# Local Mission Control dev DB
+services/mission-control-ui/data/
